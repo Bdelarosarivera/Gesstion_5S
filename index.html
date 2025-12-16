@@ -1,11 +1,11 @@
+
+
 <!DOCTYPE html>
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AuditCheck Pro</title>
-    <script type="module" src="/index.tsx"></script>
-
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -14,6 +14,10 @@
         background-color: #f3f4f6;
       }
     </style>
+    <!-- Solución para error "process is not defined" en navegadores/GitHub -->
+    <script>
+      window.process = window.process || { env: { API_KEY: '' } };
+    </script>
   <script type="importmap">
 {
   "imports": {
@@ -30,5 +34,9 @@
 </head>
   <body>
     <div id="root"></div>
+    <!-- Punto de entrada explícito para GitHub/Hosting estático -->
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
+
+
