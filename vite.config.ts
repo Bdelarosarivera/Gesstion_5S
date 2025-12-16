@@ -4,7 +4,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
-    return {base: '/Gestionar_5S/',
+    return {base: '/Gestion_5S/',
+
 
       server: {
         port: 3000,
