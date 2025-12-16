@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 // Safety check: ensure process.env exists, otherwise default to empty string to prevent crash
@@ -56,6 +55,3 @@ export const editImageWithGemini = async (base64Image: string, prompt: string): 
     throw error;
   }
 };
-
-
-
