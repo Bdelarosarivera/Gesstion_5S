@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
-    return {
+    return { base: '/Gestion_5S/', // 👈 MUY IMPORTANTE
       server: {
         port: 3000,
         host: '0.0.0.0',
