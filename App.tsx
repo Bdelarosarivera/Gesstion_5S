@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { ViewState, AuditRecord, ActionItem, AppConfig } from './types';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { ViewState, AuditRecord, ActionItem, AppConfig, Rating } from './types';
 import { QUESTIONS, AREA_MAPPING, AREAS } from './constants';
 import { AuditForm } from './components/AuditForm';
 import { Dashboard } from './components/Dashboard';
@@ -10,21 +11,40 @@ import { ActionPlanView } from './components/ActionPlanView';
 import { SettingsView } from './components/SettingsView';
 import { 
   ClipboardList, 
-  LayoutDashboard, 
   Plus, 
   FileText, 
-  BarChart3, 
+  BarChart, 
   Settings, 
   Home, 
   Camera 
 } from 'lucide-react';
 
-// Initial default config based on constants
 const DEFAULT_CONFIG: AppConfig = {
   questions: QUESTIONS,
   areas: AREAS,
   responsables: AREA_MAPPING.map(am => ({ name: am.responsable, area: am.area }))
 };
+
+const MenuButton = ({label, onClick, color, icon}: any) => {
+    const colors: any = {
+        green: 'border-green-500/30 text-green-400 shadow-green-500/10',
+        blue: 'border-blue-500/30 text-blue-400 shadow-blue-500/10',
+        purple: 'border-purple-500/30 text-purple-400 shadow-purple-500/10',
+        orange: 'border-orange-500/30 text-orange-400 shadow-orange-500/10'
+    };
+    return (
+        <button onClick={onClick} className={`flex flex-col items-center justify-center bg-[#1e293b] border p-6 rounded-2xl shadow-xl hover:bg-[#0f172a] transition-all transform hover:-translate-y-1 ${colors[color]}`}>
+            {icon}
+            <span className="text-lg font-bold mt-2">{label}</span>
+        </button>
+    );
+};
+
+const NavIcon = ({active, onClick, icon, title}: any) => (
+    <button onClick={onClick} title={title} className={`p-2 rounded-lg transition-colors ${active ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:bg-gray-800'}`}>
+        {icon}
+    </button>
+);
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('home');
@@ -32,206 +52,110 @@ const App: React.FC = () => {
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [editingRecord, setEditingRecord] = useState<AuditRecord | null>(null);
+  const isInitialLoad = useRef(true);
 
-  // Load from local storage
   useEffect(() => {
     const savedRecords = localStorage.getItem('audit_records');
     const savedActions = localStorage.getItem('audit_actions');
     const savedConfig = localStorage.getItem('audit_config');
 
-    if (savedRecords) try { setRecords(JSON.parse(savedRecords)); } catch (e) { console.error(e); }
-    if (savedActions) try { setActions(JSON.parse(savedActions)); } catch (e) { console.error(e); }
-    if (savedConfig) {
-      try { 
-        const parsedConfig = JSON.parse(savedConfig);
-        const existingIds = new Set(parsedConfig.questions.map((q: any) => q.id));
-        const questionsToAdd = QUESTIONS.filter(q => !existingIds.has(q.id));
-        if (questionsToAdd.length > 0) {
-            parsedConfig.questions = [...parsedConfig.questions, ...questionsToAdd];
-        }
-        setConfig(parsedConfig); 
-      } catch (e) { console.error(e); }
-    }
+    if (savedRecords) try { setRecords(JSON.parse(savedRecords) || []); } catch (e) { console.error(e); setRecords([]); }
+    if (savedActions) try { setActions(JSON.parse(savedActions) || []); } catch (e) { console.error(e); setActions([]); }
+    if (savedConfig) try { setConfig(JSON.parse(savedConfig) || DEFAULT_CONFIG); } catch (e) { console.error(e); setConfig(DEFAULT_CONFIG); }
+    
+    isInitialLoad.current = false;
   }, []);
 
-  useEffect(() => { localStorage.setItem('audit_records', JSON.stringify(records)); }, [records]);
-  useEffect(() => { localStorage.setItem('audit_actions', JSON.stringify(actions)); }, [actions]);
-  useEffect(() => { localStorage.setItem('audit_config', JSON.stringify(config)); }, [config]);
+  useEffect(() => {
+    if (!isInitialLoad.current) {
+      localStorage.setItem('audit_records', JSON.stringify(records));
+      localStorage.setItem('audit_actions', JSON.stringify(actions));
+      localStorage.setItem('audit_config', JSON.stringify(config));
+    }
+  }, [records, actions, config]);
 
   const handleSaveAudit = (record: AuditRecord, newActions: ActionItem[]) => {
     if (editingRecord) {
-      setRecords(prev => prev.map(r => r.id === record.id ? record : r));
+      setRecords(prev => (prev || []).map(r => r.id === record.id ? record : r));
       setEditingRecord(null);
     } else {
-      setRecords(prev => [record, ...prev]);
-      setActions(prev => [...newActions, ...prev]);
-      if (newActions.length > 0) {
-        alert(`Se han generado ${newActions.length} acciones correctivas automáticamente.`);
+      setRecords(prev => [record, ...(prev || [])]);
+      if (newActions && newActions.length > 0) {
+        setActions(prev => [...newActions, ...(prev || [])]);
       }
     }
+    setTimeout(() => setView('dashboard'), 20);
+  };
+
+  const loadDemoData = () => {
+    const demoRecords: AuditRecord[] = config.areas.slice(0, 8).map((area, idx) => ({
+        id: `demo-${idx}-${Date.now()}`,
+        area: area,
+        auditor: 'Analista de Calidad',
+        responsable: config.responsables.find(r => r.area === area)?.name || 'Supervisor Gral',
+        date: new Date().toISOString(),
+        score: 70 + Math.floor(Math.random() * 25),
+        answers: config.questions.map(q => ({ questionId: q.id, rating: Rating.SI }))
+    }));
+    setRecords(demoRecords);
     setView('dashboard');
-  };
-
-  const handleUpdateAction = (updatedAction: ActionItem) => {
-    setActions(prev => prev.map(a => a.id === updatedAction.id ? updatedAction : a));
-  };
-
-  const handleUpdateConfig = (newConfig: AppConfig) => {
-    setConfig(newConfig);
-  };
-
-  const handleEdit = (record: AuditRecord) => {
-    setEditingRecord(record);
-    setView('form');
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm("¿Está seguro de eliminar este registro? Esto NO eliminará las acciones generadas.")) {
-      setRecords(prev => prev.filter(r => r.id !== id));
-    }
-  };
-
-  const handleCancelForm = () => {
-    setEditingRecord(null);
-    setView('home');
   };
 
   const renderContent = () => {
     switch (view) {
       case 'home':
         return (
-          <div className="flex flex-col items-center justify-center space-y-8 animate-fade-in py-8">
-            <h2 className="text-4xl font-bold text-blue-400 text-center mb-8 drop-shadow-lg">
-              Sistema de Auditoría 5S
+          <div className="flex flex-col items-center justify-center space-y-8 animate-fade-in py-8 text-center">
+            <h2 className="text-4xl font-black text-white mb-8 drop-shadow-lg tracking-tight">
+              AuditCheck <span className="text-blue-500">Pro</span>
             </h2>
-            
             <div className="flex flex-col gap-6 w-full max-w-md px-4">
-              <button
-                onClick={() => { setEditingRecord(null); setView('form'); }}
-                className="group relative flex flex-col items-center justify-center bg-[#1e293b] border border-green-500/30 text-green-400 p-6 rounded-2xl shadow-[0_0_15px_rgba(74,222,128,0.1)] hover:shadow-[0_0_25px_rgba(74,222,128,0.3)] hover:bg-[#0f172a] transition-all transform hover:-translate-y-1 h-32 w-full"
-              >
-                <Plus className="w-10 h-10 mb-2" strokeWidth={2.5} />
-                <span className="text-xl font-bold tracking-wide">Nueva Auditoría</span>
-              </button>
-
-              <button
-                onClick={() => setView('history')}
-                className="group relative flex flex-col items-center justify-center bg-[#1e293b] border border-blue-500/30 text-blue-400 p-6 rounded-2xl shadow-[0_0_15px_rgba(96,165,250,0.1)] hover:shadow-[0_0_25px_rgba(96,165,250,0.3)] hover:bg-[#0f172a] transition-all transform hover:-translate-y-1 h-32 w-full"
-              >
-                <ClipboardList className="w-10 h-10 mb-2" strokeWidth={2.5} />
-                <span className="text-xl font-bold tracking-wide">Ver Auditorías</span>
-              </button>
-
-              <button
-                onClick={() => setView('dashboard')}
-                className="group relative flex flex-col items-center justify-center bg-[#1e293b] border border-purple-500/30 text-purple-400 p-6 rounded-2xl shadow-[0_0_15px_rgba(192,132,252,0.1)] hover:shadow-[0_0_25px_rgba(192,132,252,0.3)] hover:bg-[#0f172a] transition-all transform hover:-translate-y-1 h-32 w-full"
-              >
-                <BarChart3 className="w-10 h-10 mb-2" strokeWidth={2.5} />
-                <span className="text-xl font-bold tracking-wide">Dashboard</span>
-              </button>
-
-              <button
-                onClick={() => setView('consolidated')}
-                className="group relative flex flex-col items-center justify-center bg-[#1e293b] border border-orange-500/30 text-orange-400 p-6 rounded-2xl shadow-[0_0_15px_rgba(251,146,60,0.1)] hover:shadow-[0_0_25px_rgba(251,146,60,0.3)] hover:bg-[#0f172a] transition-all transform hover:-translate-y-1 h-32 w-full"
-              >
-                <FileText className="w-10 h-10 mb-2" strokeWidth={2.5} />
-                <span className="text-xl font-bold tracking-wide">Consolidado</span>
-              </button>
+              <MenuButton label="Nueva Auditoría" onClick={() => { setEditingRecord(null); setView('form'); }} color="green" icon={<Plus className="w-8 h-8" />} />
+              <MenuButton label="Historial" onClick={() => setView('history')} color="blue" icon={<ClipboardList className="w-8 h-8" />} />
+              <MenuButton label="Indicadores" onClick={() => setView('dashboard')} color="purple" icon={<BarChart className="w-8 h-8" />} />
+              <MenuButton label="Consolidado" onClick={() => setView('consolidated')} color="orange" icon={<FileText className="w-8 h-8" />} />
             </div>
           </div>
         );
       case 'form':
-        return <AuditForm initialData={editingRecord} config={config} onSave={handleSaveAudit} onCancel={handleCancelForm} />;
+        return <AuditForm initialData={editingRecord} config={config} onSave={handleSaveAudit} onCancel={() => setView('home')} />;
       case 'dashboard':
-        return <Dashboard records={records} actions={actions} onViewConsolidated={() => setView('consolidated')} onViewActions={() => setView('actions')} />;
+        return <Dashboard records={records} actions={actions} onViewConsolidated={() => setView('consolidated')} onViewActions={() => setView('actions')} onGenerateDemo={loadDemoData} />;
       case 'history':
-        return <History records={records} actions={actions} onEdit={handleEdit} onDelete={handleDelete} />;
-      case 'ai-editor':
-        return <AIEditor />;
+        return <History records={records} actions={actions} onEdit={(r) => { setEditingRecord(r); setView('form'); }} onDelete={(id) => setRecords(prev => prev.filter(r => r.id !== id))} />;
       case 'consolidated':
         return <ConsolidatedView records={records} onBack={() => setView('home')} />;
       case 'actions':
-        return <ActionPlanView actions={actions} onUpdateAction={handleUpdateAction} />;
+        return <ActionPlanView actions={actions} onUpdateAction={(ua) => setActions(prev => prev.map(a => a.id === ua.id ? ua : a))} />;
       case 'settings':
-        return <SettingsView config={config} onUpdateConfig={handleUpdateConfig} />;
+        return <SettingsView config={config} onUpdateConfig={setConfig} />;
+      case 'ai-editor':
+        return <AIEditor />;
       default:
         return null;
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#121212] font-sans text-gray-100 selection:bg-blue-500 selection:text-white">
-      {/* Header - Dark Blue */}
-      <header className="bg-[#0f172a] border-b border-gray-800 shadow-lg sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center justify-between">
-          <div 
-            className="flex items-center gap-3 cursor-pointer"
-            onClick={() => setView('home')}
-          >
-            <div className="bg-blue-600/20 p-2 rounded-lg backdrop-blur-sm border border-blue-500/30">
-               <ClipboardList className="w-5 h-5 text-blue-400" />
-            </div>
-            <h1 className="text-lg font-bold text-gray-100 tracking-wide hidden sm:block">
-              AuditCheck Pro
-            </h1>
+    <div className="min-h-screen bg-[#0f172a] font-sans text-gray-100">
+      <header className="bg-[#1e293b]/80 backdrop-blur-md border-b border-gray-800 shadow-xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('home')}>
+            <ClipboardList className="w-6 h-6 text-blue-500" />
+            <h1 className="text-lg font-black tracking-tighter">AuditCheck</h1>
           </div>
-
-          <nav className="flex items-center gap-1 md:gap-4">
-            <NavButton label="Inicio" active={view === 'home'} onClick={() => setView('home')} icon={<Home className="w-4 h-4" />} />
-            <NavButton label="+ Nueva" active={view === 'form'} onClick={() => { setEditingRecord(null); setView('form'); }} icon={<Plus className="w-4 h-4" />} />
-            <NavButton label="Lista" active={view === 'history'} onClick={() => setView('history')} icon={<ClipboardList className="w-4 h-4" />} />
-            <NavButton label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} icon={<BarChart3 className="w-4 h-4" />} />
-            
-            <div className="h-6 w-px bg-gray-700 mx-1"></div>
-            
-            <button 
-                onClick={() => setView('settings')}
-                className={`p-2 rounded-lg transition-colors ${view === 'settings' ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-                title="Configuración"
-            >
-                <Settings className="w-5 h-5" />
-            </button>
-            <button 
-                onClick={() => setView('ai-editor')}
-                className={`p-2 rounded-lg transition-colors ${view === 'ai-editor' ? 'bg-purple-600/20 text-purple-400' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-                title="Cámara IA"
-            >
-                <Camera className="w-5 h-5" />
-            </button>
+          <nav className="flex items-center gap-1">
+            <NavIcon active={view === 'home'} onClick={() => setView('home')} icon={<Home className="w-5 h-5" />} title="Inicio" />
+            <NavIcon active={view === 'form'} onClick={() => { setEditingRecord(null); setView('form'); }} icon={<Plus className="w-5 h-5" />} title="Nueva" />
+            <NavIcon active={view === 'dashboard'} onClick={() => setView('dashboard')} icon={<BarChart className="w-5 h-5" />} title="Dashboard" />
+            <NavIcon active={view === 'settings'} onClick={() => setView('settings')} icon={<Settings className="w-5 h-5" />} title="Ajustes" />
+            <NavIcon active={view === 'ai-editor'} onClick={() => setView('ai-editor')} icon={<Camera className="w-5 h-5" />} title="IA" />
           </nav>
         </div>
       </header>
-
-      <main className="max-w-7xl mx-auto px-4 lg:px-6 py-6 pb-20">
-        {renderContent()}
-      </main>
-      
-      <footer className="py-6 text-center text-gray-600 text-sm border-t border-gray-800 mt-8">
-        &copy; {new Date().getFullYear()} AuditCheck Pro System
-      </footer>
+      <main className="max-w-7xl mx-auto px-4 py-6">{renderContent()}</main>
     </div>
   );
 };
-
-const NavButton: React.FC<{
-  label: string; 
-  active: boolean; 
-  onClick: () => void;
-  icon: React.ReactNode;
-}> = ({ label, active, onClick, icon }) => (
-  <button
-    onClick={onClick}
-    className={`
-      flex flex-col sm:flex-row items-center gap-1.5 px-3 py-2 rounded-lg transition-all duration-200
-      ${active 
-        ? 'bg-blue-600/20 text-blue-400 font-medium border border-blue-500/20' 
-        : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-      }
-    `}
-  >
-    {icon}
-    <span className="text-[10px] sm:text-sm">{label}</span>
-  </button>
-);
 
 export default App;
