@@ -17,7 +17,8 @@ import {
   Settings, 
   Home, 
   Camera,
-  Loader2 
+  Loader2,
+  ListChecks
 } from 'lucide-react';
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -117,10 +118,11 @@ const App: React.FC = () => {
             </div>
             <h1 className="text-xl font-black tracking-tighter">Audit<span className="text-blue-500">Check</span></h1>
           </div>
-          <nav className="flex items-center gap-2">
+          <nav className="flex items-center gap-1 sm:gap-2">
             <NavIcon active={view === 'home'} onClick={() => setView('home')} icon={Home} title="Inicio" />
             <NavIcon active={view === 'form'} onClick={() => { setEditingRecord(null); setView('form'); }} icon={Plus} title="Auditar" />
-            <NavIcon active={view === 'dashboard'} onClick={() => setView('dashboard')} icon={BarChart} title="Métricas" />
+            <NavIcon active={view === 'dashboard' || view === 'consolidated'} onClick={() => setView('dashboard')} icon={BarChart} title="Métricas" />
+            <NavIcon active={view === 'actions'} onClick={() => setView('actions')} icon={ListChecks} title="Planes" />
             <NavIcon active={view === 'history'} onClick={() => setView('history')} icon={FileText} title="Historial" />
             <NavIcon active={view === 'ai-editor'} onClick={() => setView('ai-editor')} icon={Camera} title="IA" />
             <NavIcon active={view === 'settings'} onClick={() => setView('settings')} icon={Settings} title="Ajustes" />
@@ -153,10 +155,10 @@ const App: React.FC = () => {
                         <p className="text-lg font-bold">Indicadores</p>
                         <p className="text-xs text-gray-500">Métricas de planta</p>
                     </button>
-                    <button onClick={() => setView('history')} className="p-6 bg-[#1e293b] border border-purple-500/20 rounded-3xl hover:border-purple-500/50 transition-all text-left">
-                        <FileText className="w-8 h-8 text-purple-500 mb-4" />
-                        <p className="text-lg font-bold">Registros</p>
-                        <p className="text-xs text-gray-500">Historial de datos</p>
+                    <button onClick={() => setView('actions')} className="p-6 bg-[#1e293b] border border-amber-500/20 rounded-3xl hover:border-amber-500/50 transition-all text-left">
+                        <ListChecks className="w-8 h-8 text-amber-500 mb-4" />
+                        <p className="text-lg font-bold">Planes de Acción</p>
+                        <p className="text-xs text-gray-500">Hallazgos y tareas</p>
                     </button>
                 </div>
              </div>
@@ -172,7 +174,7 @@ const App: React.FC = () => {
       </main>
 
       <footer className="max-w-7xl mx-auto px-4 py-8 border-t border-gray-800 w-full opacity-30 text-center">
-        <p className="text-[10px] font-bold tracking-widest uppercase">AuditCheck Pro v2.2 - Estabilidad Optimizada</p>
+        <p className="text-[10px] font-bold tracking-widest uppercase">AuditCheck Pro v2.5 - Acceso Rápido Habilitado</p>
       </footer>
     </div>
   );

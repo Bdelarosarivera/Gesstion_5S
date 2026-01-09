@@ -9,7 +9,10 @@ import {
   Database,
   TrendingUp,
   AlertTriangle,
-  Target
+  Target,
+  ListChecks,
+  SearchCode,
+  ArrowRight
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -20,20 +23,25 @@ interface DashboardProps {
   onGenerateDemo?: () => void;
 }
 
-const StatCard = ({ label, value, color, icon: Icon }: any) => (
-    <div className="bg-[#1e293b] p-5 rounded-2xl border border-gray-800 shadow-sm hover:border-gray-700 transition-all">
+const StatCard = ({ label, value, color, icon: Icon, onClick }: any) => (
+    <div 
+      onClick={onClick}
+      className={`bg-[#1e293b] p-5 rounded-2xl border border-gray-800 shadow-sm transition-all ${onClick ? 'cursor-pointer hover:border-blue-500/50 hover:bg-[#243146]' : 'hover:border-gray-700'}`}
+    >
         <div className="flex justify-between items-start mb-2">
             <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{label}</p>
             {Icon && <Icon className={`w-4 h-4 ${color.replace('text-', 'text-opacity-40 ')}`} />}
         </div>
-        <p className={`text-3xl font-black ${color}`}>{value}</p>
+        <div className="flex items-end justify-between">
+          <p className={`text-3xl font-black ${color}`}>{value}</p>
+          {onClick && <ArrowRight className="w-4 h-4 text-gray-600 mb-1" />}
+        </div>
     </div>
 );
 
 export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = [], onViewConsolidated, onViewActions, onGenerateDemo }) => {
   const [isReady, setIsReady] = useState(false);
 
-  // Aseguramos que el componente esté montado antes de renderizar gráficos complejos
   useEffect(() => {
     const timer = setTimeout(() => setIsReady(true), 200);
     return () => clearTimeout(timer);
@@ -119,14 +127,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = []
 
   return (
     <div className="space-y-6 pb-24 animate-fade-in">
-      <h2 className="text-3xl font-black text-white flex items-center gap-3 tracking-tighter">
-          <TrendingUp className="text-blue-500" /> DASHBOARD DE PLANTA
-      </h2>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h2 className="text-3xl font-black text-white flex items-center gap-3 tracking-tighter">
+            <TrendingUp className="text-blue-500" /> DASHBOARD DE PLANTA
+        </h2>
+        <div className="flex items-center gap-2">
+            <button 
+              onClick={onViewConsolidated}
+              className="flex items-center gap-2 bg-blue-600/10 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-xs font-bold hover:bg-blue-600 hover:text-white transition-all"
+            >
+                <SearchCode className="w-4 h-4" /> Análisis Consolidado
+            </button>
+            <button 
+              onClick={onViewActions}
+              className="flex items-center gap-2 bg-amber-600/10 text-amber-400 border border-amber-500/30 px-4 py-2 rounded-xl text-xs font-bold hover:bg-amber-600 hover:text-white transition-all"
+            >
+                <ListChecks className="w-4 h-4" /> Plan de Acción
+            </button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Auditorías" value={safeRecords.length} color="text-blue-400" icon={ClipboardList} />
         <StatCard label="Global" value={`${averageScore}%`} color={averageScore >= 80 ? 'text-green-400' : 'text-yellow-400'} icon={Target} />
-        <StatCard label="Pendientes" value={openActions} color="text-red-400" icon={AlertTriangle} />
+        <StatCard 
+          label="Hallazgos Pendientes" 
+          value={openActions} 
+          color="text-red-400" 
+          icon={AlertTriangle} 
+          onClick={onViewActions}
+        />
         <StatCard label="Cerrados" value={closedActions} color="text-purple-400" icon={Trophy} />
       </div>
 
