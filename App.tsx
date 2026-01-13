@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { ViewState, AuditRecord, ActionItem, AppConfig, Rating } from './types';
 import { QUESTIONS, AREA_MAPPING, AREAS } from './constants';
@@ -35,7 +34,7 @@ const App: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<AuditRecord | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Carga inicial de datos
+  // Carga inicial
   useEffect(() => {
     const loadData = () => {
       try {
@@ -46,7 +45,7 @@ const App: React.FC = () => {
         if (a) setActions(JSON.parse(a));
         if (c) setConfig(JSON.parse(c));
       } catch (e) {
-        console.error("Error al cargar datos de localStorage:", e);
+        console.error("Error cargando datos:", e);
       } finally {
         setIsInitializing(false);
       }
@@ -54,7 +53,7 @@ const App: React.FC = () => {
     loadData();
   }, []);
 
-  // Guardado automático cada vez que cambien los estados principales
+  // Persistencia automática
   useEffect(() => {
     if (!isInitializing) {
       localStorage.setItem('audit_records', JSON.stringify(records));
@@ -76,17 +75,23 @@ const App: React.FC = () => {
     setView('dashboard');
   }, [editingRecord]);
 
-  const handleUpdateAction = (updatedAction: ActionItem) => {
+  const handleUpdateAction = useCallback((updatedAction: ActionItem) => {
     setActions(prev => prev.map(a => a.id === updatedAction.id ? updatedAction : a));
-  };
+  }, []);
 
-  const handleDeleteAction = (actionId: string) => {
+  const handleDeleteAction = useCallback((actionId: string) => {
     setActions(prev => prev.filter(a => a.id !== actionId));
-  };
+  }, []);
 
-  const handleClearActions = () => {
+  const handleDeleteRecord = useCallback((id: string) => {
+    setRecords(prev => prev.filter(r => r.id !== id));
+    // Al eliminar la auditoría, también eliminamos sus acciones asociadas
+    setActions(prev => prev.filter(a => a.auditId !== id));
+  }, []);
+
+  const handleClearActions = useCallback(() => {
     setActions([]);
-  };
+  }, []);
 
   const generateDemo = () => {
     const demo = config.areas.slice(0, 8).map((area, i) => ({
@@ -181,7 +186,7 @@ const App: React.FC = () => {
         )}
         {view === 'form' && <AuditForm initialData={editingRecord} config={config} onSave={handleSaveAudit} onCancel={() => setView('home')} />}
         {view === 'dashboard' && <Dashboard records={records} actions={actions} onViewConsolidated={() => setView('consolidated')} onViewActions={() => setView('actions')} onGenerateDemo={generateDemo} />}
-        {view === 'history' && <History records={records} actions={actions} onEdit={(r) => { setEditingRecord(r); setView('form'); }} onDelete={(id) => setRecords(prev => prev.filter(r => r.id !== id))} />}
+        {view === 'history' && <History records={records} actions={actions} onEdit={(r) => { setEditingRecord(r); setView('form'); }} onDelete={handleDeleteRecord} />}
         {view === 'consolidated' && <ConsolidatedView records={records} onBack={() => setView('dashboard')} />}
         {view === 'actions' && (
           <ActionPlanView 

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { ActionItem, ActionStatus } from '../types';
 import { CheckCircle2, Clock, AlertCircle, Search, Save, X, Users, Trash2, Edit2, Eraser } from 'lucide-react';
@@ -34,24 +33,10 @@ export const ActionPlanView: React.FC<ActionPlanViewProps> = ({ actions, onUpdat
   };
 
   const handleSaveEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
+    e.preventDefault();
     if (editingAction) {
       onUpdateAction(editingAction);
       setEditingAction(null);
-    }
-  };
-
-  const onConfirmDeleteAction = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (window.confirm('¿Desea eliminar este hallazgo del plan de acción definitivamente?')) {
-      onDeleteAction(id);
-    }
-  };
-
-  const onConfirmClearAll = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm('ATENCIÓN: ¿Está seguro de eliminar TODOS los planes de acción de la lista? Esta acción no se puede deshacer.')) {
-      onClearActions();
     }
   };
 
@@ -60,13 +45,17 @@ export const ActionPlanView: React.FC<ActionPlanViewProps> = ({ actions, onUpdat
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-100">Planes de Acción</h2>
-          <p className="text-sm text-gray-500">Gestión estratégica de hallazgos críticos.</p>
+          <p className="text-sm text-gray-500">Seguimiento de hallazgos críticos de planta.</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
             <button 
                 type="button"
-                onClick={onConfirmClearAll}
+                onClick={() => {
+                  if (window.confirm('ATENCIÓN: Se eliminarán TODOS los registros del plan de acción actual. ¿Desea continuar?')) {
+                    onClearActions();
+                  }
+                }}
                 className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600/20 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold hover:bg-red-600 hover:text-white transition-all shadow-sm"
             >
                 <Eraser className="w-3.5 h-3.5" /> Limpiar Todo el Plan
@@ -95,15 +84,15 @@ export const ActionPlanView: React.FC<ActionPlanViewProps> = ({ actions, onUpdat
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-red-900/10 border border-red-500/20 p-4 rounded-2xl text-center">
+        <div className="bg-red-900/10 border border-red-500/20 p-4 rounded-2xl text-center shadow-inner">
             <div className="text-xl font-black text-red-500">{(actions || []).filter(a => a.status === 'PENDING').length}</div>
             <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Pendientes</div>
         </div>
-        <div className="bg-yellow-900/10 border border-yellow-500/20 p-4 rounded-2xl text-center">
+        <div className="bg-yellow-900/10 border border-yellow-500/20 p-4 rounded-2xl text-center shadow-inner">
             <div className="text-xl font-black text-yellow-500">{(actions || []).filter(a => a.status === 'IN_PROGRESS').length}</div>
             <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">En Proceso</div>
         </div>
-        <div className="bg-green-900/10 border border-green-500/20 p-4 rounded-2xl text-center">
+        <div className="bg-green-900/10 border border-green-500/20 p-4 rounded-2xl text-center shadow-inner">
             <div className="text-xl font-black text-green-500">{(actions || []).filter(a => a.status === 'CLOSED').length}</div>
             <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Cerrados</div>
         </div>
@@ -127,7 +116,7 @@ export const ActionPlanView: React.FC<ActionPlanViewProps> = ({ actions, onUpdat
                                 </button>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase">Hallazgo Original (Pregunta)</label>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase">Hallazgo Identificado</label>
                                 <textarea 
                                     value={editingAction.questionText}
                                     onChange={(e) => setEditingAction({...editingAction, questionText: e.target.value})}
@@ -187,8 +176,8 @@ export const ActionPlanView: React.FC<ActionPlanViewProps> = ({ actions, onUpdat
                                         <span>{action.questionText}</span>
                                     </p>
                                     <div className="text-xs text-gray-400 bg-[#0f172a] p-4 rounded-2xl border border-gray-800 shadow-inner group-hover:border-gray-700 transition-colors">
-                                        <p className="font-black text-gray-500 text-[9px] uppercase tracking-[0.2em] mb-2">Plan de Resolución Sugerido:</p>
-                                        <span className="text-gray-300 leading-relaxed font-medium">"{action.suggestedAction}"</span>
+                                        <p className="font-black text-gray-500 text-[9px] uppercase tracking-[0.2em] mb-2">Resolución Sugerida:</p>
+                                        <span className="text-gray-300 leading-relaxed font-bold">"{action.suggestedAction}"</span>
                                     </div>
                                 </div>
                                 <div className="flex flex-wrap gap-4 text-[10px] text-gray-500 pt-2 font-bold uppercase tracking-tight">
@@ -201,16 +190,20 @@ export const ActionPlanView: React.FC<ActionPlanViewProps> = ({ actions, onUpdat
                             <div className="flex md:flex-col items-stretch justify-center border-t md:border-t-0 md:border-l border-gray-800 pt-4 md:pt-0 md:pl-5 gap-2 min-w-[130px]">
                                 <button 
                                     type="button"
-                                    onClick={(e) => { e.stopPropagation(); setEditingAction(action); }} 
-                                    className="flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/10 text-blue-400 rounded-xl font-black text-[10px] uppercase hover:bg-blue-500 hover:text-white transition-all"
+                                    onClick={() => setEditingAction(action)} 
+                                    className="flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/10 text-blue-400 rounded-xl font-black text-[10px] uppercase hover:bg-blue-500 hover:text-white transition-all shadow-sm"
                                     title="Editar hallazgo y plan"
                                 >
                                     <Edit2 className="w-3.5 h-3.5" /> Gestionar
                                 </button>
                                 <button 
                                     type="button"
-                                    onClick={(e) => onConfirmDeleteAction(e, action.id)} 
-                                    className="flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 text-red-500 rounded-xl font-black text-[10px] uppercase hover:bg-red-600 hover:text-white transition-all"
+                                    onClick={() => {
+                                      if (window.confirm('¿Desea eliminar este hallazgo del plan de acción?')) {
+                                        onDeleteAction(action.id);
+                                      }
+                                    }} 
+                                    className="flex items-center justify-center gap-2 px-3 py-2 bg-red-600/10 text-red-500 border border-red-500/20 rounded-xl font-black text-[10px] uppercase hover:bg-red-600 hover:text-white transition-all shadow-sm"
                                     title="Eliminar esta acción"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" /> Eliminar

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Rating, Answer, AuditRecord, AppConfig, ActionItem } from '../types';
 import { Save, User, MapPin, ClipboardCheck, Calendar, UserCircle, X } from 'lucide-react';
@@ -99,7 +98,7 @@ export const AuditForm: React.FC<AuditFormProps> = ({ initialData, config, onSav
                     questionId: q.id,
                     questionText: q.text,
                     issueType: 'NO',
-                    suggestedAction: `Accion generada: "${q.text}"`,
+                    suggestedAction: "Accion generada",
                     responsable: responsable,
                     dueDate: dueDate.toISOString(),
                     status: 'PENDING',
