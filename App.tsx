@@ -34,7 +34,7 @@ const App: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<AuditRecord | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Carga inicial
+  // Carga inicial de datos desde LocalStorage
   useEffect(() => {
     const loadData = () => {
       try {
@@ -53,7 +53,7 @@ const App: React.FC = () => {
     loadData();
   }, []);
 
-  // Persistencia automática
+  // Persistencia automática ante cambios en el estado
   useEffect(() => {
     if (!isInitializing) {
       localStorage.setItem('audit_records', JSON.stringify(records));
@@ -65,6 +65,25 @@ const App: React.FC = () => {
   const handleSaveAudit = useCallback((record: AuditRecord, newActions: ActionItem[]) => {
     if (editingRecord) {
       setRecords(prev => prev.map(r => r.id === record.id ? record : r));
+      setActions(prev => {
+        const otherAuditActions = prev.filter(a => a.auditId !== record.id);
+        const currentAuditActions = prev.filter(a => a.auditId === record.id);
+        
+        const updatedAuditActions = newActions.map(newAct => {
+          const existing = currentAuditActions.find(curr => curr.questionId === newAct.questionId);
+          if (existing) {
+            return { 
+              ...newAct, 
+              id: existing.id, 
+              status: existing.status, 
+              comments: existing.comments,
+              createdAt: existing.createdAt 
+            };
+          }
+          return newAct;
+        });
+        return [...otherAuditActions, ...updatedAuditActions];
+      });
       setEditingRecord(null);
     } else {
       setRecords(prev => [record, ...prev]);
@@ -83,13 +102,24 @@ const App: React.FC = () => {
     setActions(prev => prev.filter(a => a.id !== actionId));
   }, []);
 
+  // Función de eliminación CRÍTICA: Asegura que el estado se actualice correctamente
   const handleDeleteRecord = useCallback((id: string) => {
-    setRecords(prev => prev.filter(r => r.id !== id));
-    // Al eliminar la auditoría, también eliminamos sus acciones asociadas
-    setActions(prev => prev.filter(a => a.auditId !== id));
+    setRecords(prev => {
+      const newRecords = prev.filter(r => r.id !== id);
+      return [...newRecords]; // Forzar nueva referencia
+    });
+    setActions(prev => {
+      const newActions = prev.filter(a => a.auditId !== id);
+      return [...newActions]; // Forzar nueva referencia
+    });
   }, []);
 
   const handleClearActions = useCallback(() => {
+    setActions([]);
+  }, []);
+
+  const handleClearHistory = useCallback(() => {
+    setRecords([]);
     setActions([]);
   }, []);
 
@@ -186,7 +216,7 @@ const App: React.FC = () => {
         )}
         {view === 'form' && <AuditForm initialData={editingRecord} config={config} onSave={handleSaveAudit} onCancel={() => setView('home')} />}
         {view === 'dashboard' && <Dashboard records={records} actions={actions} onViewConsolidated={() => setView('consolidated')} onViewActions={() => setView('actions')} onGenerateDemo={generateDemo} />}
-        {view === 'history' && <History records={records} actions={actions} onEdit={(r) => { setEditingRecord(r); setView('form'); }} onDelete={handleDeleteRecord} />}
+        {view === 'history' && <History records={records} actions={actions} onEdit={(r) => { setEditingRecord(r); setView('form'); }} onDelete={handleDeleteRecord} onClearHistory={handleClearHistory} />}
         {view === 'consolidated' && <ConsolidatedView records={records} onBack={() => setView('dashboard')} />}
         {view === 'actions' && (
           <ActionPlanView 
