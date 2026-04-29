@@ -1,4 +1,3 @@
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -9,8 +8,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     rollupOptions: {
-      // Al eliminar 'external', Vite agrupará todas las dependencias en el bundle.
-      // Esto previene errores de red/CORS y conflictos de versiones de React.
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'lucide-react', 'recharts', 'xlsx', 'html2canvas']
