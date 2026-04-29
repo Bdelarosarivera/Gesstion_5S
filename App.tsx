@@ -34,7 +34,7 @@ const App: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<AuditRecord | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Carga inicial de datos desde LocalStorage
+  // Carga inicial
   useEffect(() => {
     const loadData = () => {
       try {
@@ -53,7 +53,7 @@ const App: React.FC = () => {
     loadData();
   }, []);
 
-  // Persistencia automática ante cambios en el estado
+  // Persistencia automática
   useEffect(() => {
     if (!isInitializing) {
       localStorage.setItem('audit_records', JSON.stringify(records));
@@ -102,16 +102,12 @@ const App: React.FC = () => {
     setActions(prev => prev.filter(a => a.id !== actionId));
   }, []);
 
-  // Función de eliminación CRÍTICA: Asegura que el estado se actualice correctamente
+  // Función de eliminación mejorada para asegurar actualización del historial
   const handleDeleteRecord = useCallback((id: string) => {
-    setRecords(prev => {
-      const newRecords = prev.filter(r => r.id !== id);
-      return [...newRecords]; // Forzar nueva referencia
-    });
-    setActions(prev => {
-      const newActions = prev.filter(a => a.auditId !== id);
-      return [...newActions]; // Forzar nueva referencia
-    });
+    // Actualizamos el estado de registros filtrando por el ID
+    setRecords(prev => prev.filter(r => r.id !== id));
+    // Eliminamos también las acciones asociadas a esa auditoría
+    setActions(prev => prev.filter(a => a.auditId !== id));
   }, []);
 
   const handleClearActions = useCallback(() => {

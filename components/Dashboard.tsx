@@ -338,27 +338,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = []
 
         <div className="lg:col-span-2 bg-[#1e293b] rounded-2xl border border-gray-800 p-8 shadow-2xl">
           <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-8">Desempeño por Área (%)</h3>
-          <div className="w-full" style={{ height: '300px' }}>
-            <Recharts.ResponsiveContainer width="100%" height="100%">
-              <Recharts.BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 60 }}>
-                <Recharts.XAxis type="number" domain={[0, 100]} hide />
-                <Recharts.YAxis dataKey="name" type="category" width={120} tick={{fontSize: 11, fill: '#f1f5f9'}} axisLine={false} tickLine={false} />
-                <Recharts.Tooltip 
-                  cursor={{fill: 'rgba(255,255,255,0.05)'}}
-                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '12px' }} 
-                />
-                <Recharts.Bar dataKey="score" radius={[0, 6, 6, 0]} barSize={24}>
-                    {chartData.map((entry, index) => <Recharts.Cell key={`cell-${index}`} fill={getBarColor(entry.score)} />)}
-                    <Recharts.LabelList 
-                      dataKey="score" 
-                      position="right" 
-                      formatter={(val: number) => `${val}%`} 
-                      style={{ fill: '#f1f5f9', fontSize: '11px', fontWeight: 'bold' }} 
-                      offset={10}
-                    />
-                </Recharts.Bar>
-              </Recharts.BarChart>
-            </Recharts.ResponsiveContainer>
+          <div className="w-full overflow-y-auto pr-2 custom-scrollbar" style={{ height: '400px' }}>
+            <div style={{ height: `${Math.max(350, chartData.length * 50)}px`, minWidth: '100%' }}>
+              <Recharts.ResponsiveContainer width="100%" height="100%">
+                <Recharts.BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 60, top: 10, bottom: 10 }}>
+                  <Recharts.XAxis type="number" domain={[0, 100]} hide />
+                  <Recharts.YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    width={140} 
+                    tick={{fontSize: 10, fill: '#f1f5f9', fontWeight: 600}} 
+                    axisLine={false} 
+                    tickLine={false}
+                  />
+                  <Recharts.Tooltip 
+                    cursor={{fill: 'rgba(255,255,255,0.05)'}}
+                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '12px' }} 
+                  />
+                  <Recharts.Bar dataKey="score" radius={[0, 6, 6, 0]} barSize={28}>
+                      {chartData.map((entry, index) => <Recharts.Cell key={`cell-${index}`} fill={getBarColor(entry.score)} />)}
+                      <Recharts.LabelList 
+                        dataKey="score" 
+                        position="right" 
+                        formatter={(val: number) => `${val}%`} 
+                        style={{ fill: '#f1f5f9', fontSize: '11px', fontWeight: 'bold' }} 
+                        offset={10}
+                      />
+                  </Recharts.Bar>
+                </Recharts.BarChart>
+              </Recharts.ResponsiveContainer>
+            </div>
           </div>
         </div>
       </div>

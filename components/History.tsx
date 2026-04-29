@@ -19,7 +19,6 @@ export const History: React.FC<HistoryProps> = ({ records, actions, onEdit, onDe
       return;
     }
 
-    // Preparar datos para SharePoint (Formato Plano)
     const auditData = records.map(r => {
       const row: any = {
         'ID': r.id,
@@ -29,7 +28,6 @@ export const History: React.FC<HistoryProps> = ({ records, actions, onEdit, onDe
         'Auditor': r.auditor,
         'Puntaje_Porcentaje': r.score
       };
-      // Incluir respuestas dinámicas con nombres de columnas amigables
       r.answers.forEach(a => { 
         row[`P${a.questionId}_Calificacion`] = a.rating; 
       });
@@ -56,8 +54,7 @@ export const History: React.FC<HistoryProps> = ({ records, actions, onEdit, onDe
     XLSX.utils.book_append_sheet(wb, wsAudits, "BD_Auditorias");
     XLSX.utils.book_append_sheet(wb, wsActions, "BD_Plan_Accion");
 
-    // Descarga el archivo
-    XLSX.writeFile(wb, `AuditCheck_Data_SharePoint_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(wb, `AuditCheck_Data_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const getScoreBadge = (score: number) => {
@@ -65,20 +62,6 @@ export const History: React.FC<HistoryProps> = ({ records, actions, onEdit, onDe
                      score >= 70 ? 'bg-yellow-900/30 text-yellow-400 border-yellow-500/30' : 
                      'bg-red-900/30 text-red-400 border-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.1)]';
     return <span className={`px-3 py-1 text-xs font-black rounded-lg border ${colorClass}`}>{score}%</span>;
-  };
-
-  const handleDelete = (e: React.MouseEvent, id: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (window.confirm('¿Confirmas la eliminación definitiva? Este registro y sus acciones correctivas desaparecerán inmediatamente del historial y del plan de acción.')) {
-      onDelete(id);
-    }
-  };
-
-  const handleEdit = (e: React.MouseEvent, record: AuditRecord) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onEdit(record);
   };
 
   return (
@@ -108,25 +91,8 @@ export const History: React.FC<HistoryProps> = ({ records, actions, onEdit, onDe
             className={`flex items-center gap-2 px-6 py-3 rounded-2xl transition-all font-bold shadow-lg w-full lg:w-auto justify-center group ${records.length === 0 ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' : 'bg-[#107c41] hover:bg-[#0b5c30] text-white border border-[#107c41]'}`}
           >
             <Download className="w-5 h-5 group-hover:translate-y-0.5 transition-transform" /> 
-            Exportar para SharePoint
+            Exportar Excel
           </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-blue-900/10 border border-blue-500/20 p-5 rounded-2xl flex items-start gap-4 shadow-inner">
-            <Share className="w-6 h-6 text-blue-400 shrink-0 mt-1" />
-            <div>
-                <p className="font-black text-blue-400 text-xs uppercase tracking-widest mb-1">Carga a SharePoint</p>
-                <p className="text-xs text-gray-400 leading-relaxed">El Excel exportado está optimizado para alimentar Tablas de Excel en SharePoint Online y flujos de Power Automate.</p>
-            </div>
-        </div>
-        <div className="bg-amber-900/10 border border-amber-500/20 p-5 rounded-2xl flex items-start gap-4 shadow-inner">
-            <Info className="w-6 h-6 text-amber-500 shrink-0 mt-1" />
-            <div>
-                <p className="font-black text-amber-500 text-xs uppercase tracking-widest mb-1">Gestión de Registros</p>
-                <p className="text-xs text-gray-400 leading-relaxed">Al eliminar una auditoría, el sistema limpia instantáneamente la base de datos local y actualiza la vista del historial.</p>
-            </div>
         </div>
       </div>
 
@@ -179,7 +145,7 @@ export const History: React.FC<HistoryProps> = ({ records, actions, onEdit, onDe
                       <div className="flex justify-end gap-2">
                         <button 
                             type="button"
-                            onClick={(e) => handleEdit(e, r)} 
+                            onClick={() => onEdit(r)} 
                             title="Editar Auditoría"
                             className="bg-blue-500/10 text-blue-400 hover:bg-blue-600 hover:text-white p-2.5 rounded-xl transition-all shadow-sm border border-blue-500/10"
                         >
@@ -187,7 +153,11 @@ export const History: React.FC<HistoryProps> = ({ records, actions, onEdit, onDe
                         </button>
                         <button 
                             type="button"
-                            onClick={(e) => handleDelete(e, r.id)} 
+                            onClick={() => {
+                                if (window.confirm('¿Eliminar este registro permanentemente?')) {
+                                    onDelete(r.id);
+                                }
+                            }} 
                             title="Eliminar Auditoría"
                             className="bg-red-500/10 text-red-500 hover:bg-red-600 hover:text-white p-2.5 rounded-xl transition-all shadow-sm border border-red-500/10"
                         >

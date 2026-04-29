@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppConfig } from '../types';
-import { Plus, Trash2, Settings as SettingsIcon, Users, MapPin, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Settings as SettingsIcon, Users, MapPin, HelpCircle } from 'lucide-react';
 
 interface SettingsViewProps {
   config: AppConfig;
@@ -12,6 +12,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ config, onUpdateConf
   const [newArea, setNewArea] = useState('');
   const [newResp, setNewResp] = useState('');
   const [newQuestion, setNewQuestion] = useState('');
+
+  // Estados para edición
+  const [editingArea, setEditingArea] = useState<string | null>(null);
+  const [editAreaName, setEditAreaName] = useState('');
+  const [editRespName, setEditRespName] = useState('');
+
+  const [editingQuestion, setEditingQuestion] = useState<number | null>(null);
+  const [editQuestionText, setEditQuestionText] = useState('');
 
   const handleAddArea = () => {
     if (newArea.trim() && newResp.trim()) {
@@ -27,6 +35,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ config, onUpdateConf
       setNewResp('');
     } else {
       alert("Por favor, ingrese tanto el nombre del Área como el nombre del Responsable para continuar.");
+    }
+  };
+
+  const handleUpdateArea = () => {
+    if (editingArea && editAreaName.trim() && editRespName.trim()) {
+      const oldName = editingArea;
+      const newName = editAreaName.trim().toUpperCase();
+      const newResp = editRespName.trim().toUpperCase();
+
+      const updatedAreas = config.areas.map(a => a === oldName ? newName : a);
+      const updatedResponsables = config.responsables.map(r => 
+        r.area === oldName ? { name: newResp, area: newName } : r
+      );
+
+      onUpdateConfig({
+        ...config,
+        areas: updatedAreas,
+        responsables: updatedResponsables
+      });
+      setEditingArea(null);
+    }
+  };
+
+  const handleUpdateQuestion = () => {
+    if (editingQuestion !== null && editQuestionText.trim()) {
+      onUpdateConfig({
+        ...config,
+        questions: config.questions.map(q => 
+          q.id === editingQuestion ? { ...q, text: editQuestionText.trim() } : q
+        )
+      });
+      setEditingQuestion(null);
     }
   };
 
@@ -101,21 +141,74 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ config, onUpdateConf
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {config.areas.map((area) => (
-                <div key={area} className="bg-[#0f172a]/50 p-4 rounded-xl border border-gray-800 flex justify-between items-center group hover:border-blue-500/30 transition-all">
-                  <div>
-                    <p className="font-bold text-blue-400 flex items-center gap-2">
-                        <MapPin className="w-3 h-3" /> {area}
-                    </p>
-                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter mt-1">
-                        <Users className="w-2.5 h-2.5 inline mr-1" /> {config.responsables.find(r => r.area === area)?.name || 'Sin responsable'}
-                    </p>
+              {config.areas.map((area) => {
+                const isEditing = editingArea === area;
+                const responsable = config.responsables.find(r => r.area === area)?.name || 'Sin responsable';
+
+                return (
+                  <div key={area} className={`p-4 rounded-xl border transition-all ${isEditing ? 'bg-blue-600/10 border-blue-500' : 'bg-[#0f172a]/50 border-gray-800 hover:border-blue-500/30'} flex flex-col gap-3 group`}>
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-blue-400 font-bold">NOMBRE DEL ÁREA</label>
+                          <input 
+                            type="text" 
+                            value={editAreaName} 
+                            onChange={(e) => setEditAreaName(e.target.value)} 
+                            className="w-full bg-[#1e293b] border border-blue-500/40 rounded-lg p-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-blue-400 font-bold">RESPONSABLE</label>
+                          <input 
+                            type="text" 
+                            value={editRespName} 
+                            onChange={(e) => setEditRespName(e.target.value)} 
+                            className="w-full bg-[#1e293b] border border-blue-500/40 rounded-lg p-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={handleUpdateArea} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-all flex items-center justify-center gap-2 text-xs font-bold">
+                            <Check className="w-3.5 h-3.5" /> GUARDAR
+                          </button>
+                          <button onClick={() => setEditingArea(null)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-all flex items-center justify-center gap-2 text-xs font-bold">
+                            <X className="w-3.5 h-3.5" /> CANCELAR
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-bold text-blue-400 flex items-center gap-2">
+                                <MapPin className="w-3 h-3" /> {area}
+                            </p>
+                            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter mt-1">
+                                <Users className="w-2.5 h-2.5 inline mr-1" /> {responsable}
+                            </p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button 
+                              onClick={() => {
+                                setEditingArea(area);
+                                setEditAreaName(area);
+                                setEditRespName(responsable);
+                              }} 
+                              className="p-2 text-gray-600 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg transition-all"
+                              title="Editar"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleDeleteArea(area)} className="p-2 text-gray-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all" title="Eliminar">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
-                  <button onClick={() => handleDeleteArea(area)} className="p-2 text-gray-700 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -127,16 +220,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ config, onUpdateConf
               <button onClick={handleAddQuestion} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition-all">Agregar</button>
             </div>
             <div className="grid grid-cols-1 gap-2">
-              {config.questions.map((q) => (
-                <div key={q.id} className="p-4 bg-[#0f172a]/50 border border-gray-800 rounded-xl flex justify-between items-center group hover:border-blue-500/20">
-                  <span className="text-sm text-gray-300 flex gap-3">
-                    <span className="text-blue-500 font-bold">{q.id}.</span> {q.text}
-                  </span>
-                  <button onClick={() => handleDeleteQuestion(q.id)} className="text-gray-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+              {config.questions.map((q) => {
+                const isEditing = editingQuestion === q.id;
+                return (
+                  <div key={q.id} className={`p-4 rounded-xl border flex justify-between items-center group transition-all ${isEditing ? 'bg-blue-600/10 border-blue-500' : 'bg-[#0f172a]/50 border-gray-800 hover:border-blue-500/20'}`}>
+                    {isEditing ? (
+                      <div className="flex-1 flex gap-2">
+                        <input 
+                          type="text" 
+                          value={editQuestionText} 
+                          onChange={(e) => setEditQuestionText(e.target.value)} 
+                          className="flex-1 bg-[#1e293b] border border-blue-500/40 rounded-lg p-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <button onClick={handleUpdateQuestion} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
+                          <Check className="w-3 h-3" /> GUARDAR
+                        </button>
+                        <button onClick={() => setEditingQuestion(null)} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
+                          <X className="w-3 h-3" /> CANCELAR
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-sm text-gray-300 flex gap-3">
+                          <span className="text-blue-500 font-bold">{q.id}.</span> {q.text}
+                        </span>
+                        <div className="flex gap-2 items-center">
+                          <button 
+                            onClick={() => {
+                              setEditingQuestion(q.id);
+                              setEditQuestionText(q.text);
+                            }} 
+                            className="text-gray-600 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-all p-1"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDeleteQuestion(q.id)} className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1" title="Eliminar">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
