@@ -181,6 +181,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = []
 
     setIsSending(true);
     try {
+      // Ocultar temporalmente el modal no es necesario si movemos la ref, 
+      // pero usaremos ignoreElements para mayor seguridad.
+      const captureOptions = {
+        backgroundColor: '#0f172a',
+        scale: 1.5,
+        ignoreElements: (element: Element) => {
+          // Ignorar cualquier botón o el propio modal
+          return element.tagName === 'BUTTON' || element.classList.contains('fixed');
+        }
+      };
+
       // 1. Capturar Gráfico
       let chartImage = '';
       if (chartRef.current) {
@@ -188,10 +199,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = []
         chartImage = canvas.toDataURL('image/png');
       }
 
-      // 2. Capturar Todo el Dashboard (como proxy para consolidado si no estamos en esa vista)
+      // 2. Capturar Contenido del Dashboard (sin el modal)
       let dashboardImage = '';
       if (dashboardRef.current) {
-        const canvas = await html2canvas(dashboardRef.current, { backgroundColor: '#0f172a', scale: 1.5 });
+        const canvas = await html2canvas(dashboardRef.current, captureOptions);
         dashboardImage = canvas.toDataURL('image/png');
       }
 
