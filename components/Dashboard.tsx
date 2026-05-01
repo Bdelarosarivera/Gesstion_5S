@@ -17,8 +17,12 @@ import {
   Filter,
   Calendar as CalendarIcon,
   X,
-  ChevronDown
+  ChevronDown,
+  Mail,
+  Send,
+  Loader2
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface DashboardProps {
   records: AuditRecord[];
@@ -47,18 +51,32 @@ const StatCard = ({ label, value, color, icon: Icon, onClick }: any) => (
 export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = [], onViewConsolidated, onViewActions, onGenerateDemo }) => {
   const [isReady, setIsReady] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+
   // Estados de Filtros
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedArea, setSelectedArea] = useState('ALL');
 
+  // Estados del Formulario de Envío
+  const [emailTo, setEmailTo] = useState('');
+  const [emailSubject, setEmailSubject] = useState(`Reporte de Auditoría 5S - ${new Date().toLocaleDateString()}`);
+  const [emailMessage, setEmailMessage] = useState('Adjunto encontrará el reporte detallado de la auditoría 5S realizada en planta, incluyendo el plan de acción y el desempeño por áreas.');
+
   const dashboardRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsReady(true), 200);
     return () => clearTimeout(timer);
   }, [records.length]);
+
+  const clearFilters = () => {
+    setStartDate('');
+    setEndDate('');
+    setSelectedArea('ALL');
+  };
 
   const handleCaptureScreenshot = async () => {
     if (dashboardRef.current) {
@@ -155,10 +173,92 @@ export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = []
     }
   }, [filteredRecords, filteredActions]);
 
-  const clearFilters = () => {
-    setStartDate('');
-    setEndDate('');
-    setSelectedArea('ALL');
+  const handleSendReport = async () => {
+    if (!emailTo) {
+      alert("Por favor ingrese al menos un destinatario.");
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      // 1. Capturar Gráfico
+      let chartImage = '';
+      if (chartRef.current) {
+        const canvas = await html2canvas(chartRef.current, { backgroundColor: '#1e293b', scale: 2 });
+        chartImage = canvas.toDataURL('image/png');
+      }
+
+      // 2. Capturar Todo el Dashboard (como proxy para consolidado si no estamos en esa vista)
+      let dashboardImage = '';
+      if (dashboardRef.current) {
+        const canvas = await html2canvas(dashboardRef.current, { backgroundColor: '#0f172a', scale: 1.5 });
+        dashboardImage = canvas.toDataURL('image/png');
+      }
+
+      // 3. Generar Excel (Audit y Plan de Acción)
+      const wb = XLSX.utils.book_new();
+      
+      // Hoja de Auditorías
+      const auditData = records.map(r => ({
+        ID: r.id,
+        Fecha: r.date,
+        Área: r.area,
+        Responsable: r.responsable,
+        Resultado: `${r.score}%`,
+        Observaciones: r.notes
+      }));
+      const wsAudit = XLSX.utils.json_to_sheet(auditData);
+      XLSX.utils.book_append_sheet(wb, wsAudit, "Auditorías");
+
+      // Hoja de Plan de Acción
+      const actionData = actions.map(a => ({
+        ID: a.id,
+        Área: a.area,
+        Hallazgo: a.finding,
+        Acción: a.action,
+        Responsable: a.responsable,
+        Estatus: a.status === 'OPEN' ? 'ABIERTO' : 'CERRADO',
+        Fecha_Límite: a.dueDate
+      }));
+      const wsActions = XLSX.utils.json_to_sheet(actionData);
+      XLSX.utils.book_append_sheet(wb, wsActions, "Plan de Acción");
+
+      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+
+      // 4. Enviar al Servidor
+      const response = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emailTo,
+          subject: emailSubject,
+          message: emailMessage,
+          attachments: [
+            {
+              filename: `Reporte_Auditoria_5S_${new Date().toISOString().split('T')[0]}.xlsx`,
+              content: excelBuffer
+            }
+          ],
+          images: {
+            chart: chartImage,
+            consolidated: dashboardImage // Enviamos el dashboard completo como imagen principal
+          }
+        })
+      });
+
+      const result = await response.json();
+      if (response.ok) {
+        alert("Reporte enviado correctamente.");
+        setShowEmailModal(false);
+      } else {
+        throw new Error(result.error || result.details || "Error desconocido");
+      }
+    } catch (error: any) {
+      console.error("Error enviando reporte:", error);
+      alert(`Error al enviar el reporte: ${error.message}`);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const hasActiveFilters = startDate || endDate || selectedArea !== 'ALL';
@@ -225,6 +325,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = []
             </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+            <button 
+              onClick={() => setShowEmailModal(true)}
+              className="flex items-center gap-2 bg-green-600/10 text-green-400 border border-green-500/30 px-4 py-2 rounded-xl text-xs font-bold hover:bg-green-600 hover:text-white transition-all"
+              title="Enviar reporte por correo"
+            >
+                <Mail className="w-4 h-4" /> Enviar Reporte
+            </button>
             <button 
               onClick={handleCaptureScreenshot}
               className="flex items-center gap-2 bg-purple-600/10 text-purple-400 border border-purple-500/30 px-4 py-2 rounded-xl text-xs font-bold hover:bg-purple-600 hover:text-white transition-all"
@@ -336,7 +443,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = []
           </div>
         </div>
 
-        <div className="lg:col-span-2 bg-[#1e293b] rounded-2xl border border-gray-800 p-8 shadow-2xl">
+        <div className="lg:col-span-2 bg-[#1e293b] rounded-2xl border border-gray-800 p-8 shadow-2xl" ref={chartRef}>
           <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-8">Desempeño por Área (%)</h3>
           <div className="w-full overflow-y-auto pr-2 custom-scrollbar" style={{ height: '400px' }}>
             <div style={{ height: `${Math.max(350, chartData.length * 50)}px`, minWidth: '100%' }}>
@@ -371,6 +478,91 @@ export const Dashboard: React.FC<DashboardProps> = ({ records = [], actions = []
           </div>
         </div>
       </div>
+
+      {/* Modal de Envío de Correo */}
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#1e293b] w-full max-w-lg rounded-3xl border border-gray-700 shadow-2xl overflow-hidden animate-fade-in">
+            <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-[#0f172a]/50">
+              <h3 className="text-lg font-black text-white flex items-center gap-3 tracking-tighter">
+                <Mail className="text-blue-500" /> ENVIAR REPORTE POR CORREO
+              </h3>
+              <button 
+                onClick={() => setShowEmailModal(false)}
+                className="p-2 text-gray-400 hover:bg-gray-800 rounded-xl transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Para (Separe con coma para múltiples)</label>
+                <input 
+                  type="email" 
+                  multiple
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  placeholder="ejemplo@correo.com, jefe@planta.com"
+                  className="w-full bg-[#0f172a] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Asunto</label>
+                <input 
+                  type="text" 
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  className="w-full bg-[#0f172a] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mensaje</label>
+                <textarea 
+                  rows={4}
+                  value={emailMessage}
+                  onChange={(e) => setEmailMessage(e.target.value)}
+                  className="w-full bg-[#0f172a] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all resize-none"
+                />
+              </div>
+
+              <div className="bg-blue-600/10 border border-blue-500/20 p-4 rounded-2xl">
+                <p className="text-[10px] text-blue-400 font-bold uppercase mb-2">Se adjuntará automáticamente:</p>
+                <ul className="text-[10px] text-gray-300 space-y-1">
+                  <li className="flex items-center gap-2">• Reporte Excel (Auditorías + Plan de Acción)</li>
+                  <li className="flex items-center gap-2">• Captura del Dashboard y Gráficos de áreas</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="p-6 bg-[#0f172a]/50 border-t border-gray-800 flex gap-3">
+              <button 
+                onClick={() => setShowEmailModal(false)}
+                className="flex-1 px-6 py-3 rounded-2xl text-sm font-bold text-gray-400 hover:bg-gray-800 transition-all border border-gray-700"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSendReport}
+                disabled={isSending}
+                className="flex-none bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-8 py-3 rounded-2xl flex items-center justify-center gap-3 transition-all font-bold shadow-lg shadow-blue-600/20"
+              >
+                {isSending ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" /> ENVIANDO...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5" /> ENVIAR AHORA
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
