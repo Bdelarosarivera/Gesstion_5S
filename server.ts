@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import nodemailer from 'nodemailer';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import helmet from 'helmet';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -10,11 +11,40 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Seguridad: Configurar cabeceras de seguridad
+  app.use(helmet({
+    contentSecurityPolicy: false, // Permitir assets de Vite
+  }));
+
   // Aumentar el límite para recibir imágenes base64 grandes
   app.use(express.json({ limit: '50mb' }));
 
-  // API para enviar el reporte
-  app.post('/api/send-report', async (req, res) => {
+  // Middleware sencillo para verificar la sesión (simulado con un token simple por ahora)
+  const verifyAuth = (req: any, res: any, next: any) => {
+    const authHeader = req.headers.authorization;
+    const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'admin123';
+    
+    if (authHeader === `Bearer ${ADMIN_PASS}`) {
+      next();
+    } else {
+      res.status(401).json({ error: 'No autorizado' });
+    }
+  };
+
+  // API para verificar contraseña (Login)
+  app.post('/api/login', (req, res) => {
+    const { password } = req.body;
+    const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'admin123';
+
+    if (password === ADMIN_PASS) {
+      res.json({ success: true, token: ADMIN_PASS }); // En un entorno real usaríamos JWT
+    } else {
+      res.status(401).json({ error: 'Contraseña incorrecta' });
+    }
+  });
+
+  // API para enviar el reporte (PROTEGIDA)
+  app.post('/api/send-report', verifyAuth, async (req, res) => {
     const { to, subject, message, attachments, images } = req.body;
 
     // Verificar configuración SMTP
@@ -39,17 +69,28 @@ async function startServer() {
       });
 
       // Construir el cuerpo HTML con las imágenes embebidas
-      let htmlBody = `<div style="font-family: Arial, sans-serif; color: #333;">
-        <h2>Reporte de Auditoría 5S</h2>
-        <p>${message.replace(/\n/g, '<br>')}</p>
-        <hr />
-        <h3>Gráfico de Desempeño por Área</h3>
-        <img src="cid:chart_image" style="max-width: 100%; border: 1px solid #ddd; border-radius: 8px;" />
-        <br /><br />
-        <h3>Análisis Consolidado</h3>
-        <img src="cid:consolidated_image" style="max-width: 100%; border: 1px solid #ddd; border-radius: 8px;" />
-        <br />
-        <p style="font-size: 12px; color: #666;">Este es un correo automático generado por AuditCheck Pro.</p>
+      let htmlBody = `<div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; background: #f8fafc; padding: 20px; border-radius: 12px;">
+        <h2 style="color: #1e293b; border-bottom: 2px solid #3b82f6; padding-bottom: 10px;">Reporte de Auditoría 5S</h2>
+        <p style="font-size: 16px; line-height: 1.5;">${message.replace(/\n/g, '<br>')}</p>
+        
+        <div style="margin-top: 30px;">
+          <h3 style="color: #1e293b; font-size: 18px; margin-bottom: 15px;">Captura del Dashboard General</h3>
+          <div style="background: #0f172a; padding: 15px; border-radius: 12px; border: 1px solid #334155;">
+            <img src="cid:dashboard_image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+          </div>
+        </div>
+
+        <div style="margin-top: 40px;">
+          <h3 style="color: #1e293b; font-size: 18px; margin-bottom: 15px;">Resumen de Desempeño por Áreas (Top 5)</h3>
+          <div style="background: #0f172a; padding: 15px; border-radius: 12px; border: 1px solid #334155;">
+            <img src="cid:performance_image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+          </div>
+        </div>
+
+        <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px; font-size: 12px; color: #64748b; text-align: center;">
+          <p>Este es un correo automático generado por <strong>AuditCheck Pro AI Engine</strong>.</p>
+          <p>Los archivos detallados se encuentran adjuntos en formato Excel.</p>
+        </div>
       </div>`;
 
       const mailOptions = {
@@ -65,14 +106,14 @@ async function startServer() {
           },
           // Imágenes incrustadas (CID)
           {
-            filename: 'performance_chart.png',
+            filename: 'dashboard_capture.png',
             content: Buffer.from(images.chart.split(',')[1], 'base64'),
-            cid: 'chart_image'
+            cid: 'dashboard_image'
           },
           {
-            filename: 'consolidated_analysis.png',
+            filename: 'performance_summary.png',
             content: Buffer.from(images.consolidated.split(',')[1], 'base64'),
-            cid: 'consolidated_image'
+            cid: 'performance_image'
           }
         ],
       };
