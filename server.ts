@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import nodemailer from 'nodemailer';
 import dns from 'dns';
 import path from 'path';
+import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import helmet from 'helmet';
 
@@ -12,10 +13,19 @@ if (dns && (dns as any).setDefaultResultOrder) {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DATA_FILE = path.join(__dirname, 'data.json');
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
+
+  // Inicializar archivo de datos si no existe
+  try {
+    await fs.access(DATA_FILE);
+  } catch {
+    console.log('Creando archivo de datos inicial...');
+    await fs.writeFile(DATA_FILE, JSON.stringify({ records: [], actions: [], config: null }));
+  }
 
   // Seguridad: Configurar cabeceras de seguridad
   app.use(helmet({
@@ -37,20 +47,10 @@ async function startServer() {
     }
   };
 
-  // API para verificar contraseña (Login)
-  app.post('/api/login', (req, res) => {
-    console.log('Intento de login recibido');
-    const { password } = req.body;
-    const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'admin123';
-
-    if (password === ADMIN_PASS) {
-      console.log('Login exitoso');
-      res.json({ success: true, token: ADMIN_PASS }); // En un entorno real usaríamos JWT
-    } else {
-      console.warn('Intento de login fallido');
-      res.status(401).json({ error: 'Contraseña incorrecta' });
-    }
-  });
+  // API para cargar todos los datos sincronizados (DEPRECATED - Moved to Firestore)
+  // app.get('/api/data', verifyAuth, ...)
+  // app.post('/api/data', verifyAuth, ...)
+  // app.post('/api/login', ...)
 
   // API para enviar el reporte (PROTEGIDA)
   app.post('/api/send-report', verifyAuth, async (req, res) => {
@@ -69,48 +69,32 @@ async function startServer() {
     }
 
     try {
-      console.log('--- INTENTO DE ENVÍO RESILIENTE (IPV4 FORCED) ---');
+      console.log('--- INTENTO DE ENVÍO RESILIENTE (RENDER OPTIMIZED) ---');
       
-      // Resolución manual de DNS para forzar IPv4 y evitar ENETUNREACH
-      const getIPv4 = async (hostname: string): Promise<string> => {
-        return new Promise((resolve, reject) => {
-          dns.lookup(hostname, { family: 4 }, (err, address) => {
-            if (err) reject(err);
-            else resolve(address);
-          });
-        });
-      };
-
-      let host = 'smtp.gmail.com';
-      try {
-        const ipv4 = await getIPv4('smtp.gmail.com');
-        console.log(`DNS: smtp.gmail.com resuelto a IPv4: ${ipv4}`);
-        host = ipv4;
-      } catch (dnsErr) {
-        console.warn('DNS: Fallo al resolver smtp.gmail.com a IPv4, usando hostname:', dnsErr);
-      }
-
-      // NO usar 'service: gmail' ya que eso ignora host/port y puede forzar IPv6
+      // Intentamos usar el pool para mejorar la persistencia de la conexión
       const transporter = nodemailer.createTransport({
-        host: host,
+        host: 'smtp.gmail.com',
         port: 465,
-        secure: true, // SSL/TLS
+        secure: true,
         auth: {
           user: SMTP_USER,
           pass: SMTP_PASS,
         },
-        family: 4, // Fuerza IPv4 a nivel de socket
+        pool: true, // Usar un pool de conexiones
+        maxConnections: 1, // Limitar para evitar saturación en la nube
+        maxMessages: 1,
+        family: 4, // Forzar IPv4
         tls: {
           rejectUnauthorized: false,
           minVersion: 'TLSv1.2',
-          servername: 'smtp.gmail.com' // Necesario para que el certificado SSL coincida con el dominio
+          servername: 'smtp.gmail.com'
         },
-        connectionTimeout: 30000,
-        greetingTimeout: 20000,
-        socketTimeout: 30000,
+        connectionTimeout: 60000, // 60 segundos
+        greetingTimeout: 60000,
+        socketTimeout: 120000, // 2 minutos para el envío de datos
       });
 
-      console.log(`Enviando correo a través de ${host}...`);
+      console.log('Iniciando envío de correo (Transporter configurado)...');
 
       // Construir el cuerpo HTML con las imágenes embebidas
       let htmlBody = `<div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; background: #f8fafc; padding: 20px; border-radius: 12px;">
