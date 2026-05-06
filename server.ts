@@ -1,15 +1,21 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import nodemailer from 'nodemailer';
+import dns from 'dns';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import helmet from 'helmet';
+
+// SOLUCIÓN DEFINITIVA PARA ENETUNREACH: Forzar IPv4 globalmente en las resoluciones DNS
+if (dns && (dns as any).setDefaultResultOrder) {
+  (dns as any).setDefaultResultOrder('ipv4first');
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   // Seguridad: Configurar cabeceras de seguridad
   app.use(helmet({
@@ -33,40 +39,78 @@ async function startServer() {
 
   // API para verificar contraseña (Login)
   app.post('/api/login', (req, res) => {
+    console.log('Intento de login recibido');
     const { password } = req.body;
     const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'admin123';
 
     if (password === ADMIN_PASS) {
+      console.log('Login exitoso');
       res.json({ success: true, token: ADMIN_PASS }); // En un entorno real usaríamos JWT
     } else {
+      console.warn('Intento de login fallido');
       res.status(401).json({ error: 'Contraseña incorrecta' });
     }
   });
 
   // API para enviar el reporte (PROTEGIDA)
   app.post('/api/send-report', verifyAuth, async (req, res) => {
+    console.log('Solicitud de envío de reporte recibida');
     const { to, subject, message, attachments, images } = req.body;
-
+    
     // Verificar configuración SMTP
-    const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+    const { SMTP_USER, SMTP_PASS } = process.env;
 
-    if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    if (!SMTP_USER || !SMTP_PASS) {
+      console.error('Configuración SMTP incompleta');
       return res.status(500).json({ 
-        error: 'Configuración SMTP incompleta en las variables de entorno.',
-        details: 'Se requieren SMTP_HOST, SMTP_USER y SMTP_PASS.' 
+        error: 'Configuración SMTP incompleta',
+        details: 'Faltan credenciales del correo (SMTP_USER/PASS).' 
       });
     }
 
     try {
+      console.log('--- INTENTO DE ENVÍO RESILIENTE (IPV4 FORCED) ---');
+      
+      // Resolución manual de DNS para forzar IPv4 y evitar ENETUNREACH
+      const getIPv4 = async (hostname: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          dns.lookup(hostname, { family: 4 }, (err, address) => {
+            if (err) reject(err);
+            else resolve(address);
+          });
+        });
+      };
+
+      let host = 'smtp.gmail.com';
+      try {
+        const ipv4 = await getIPv4('smtp.gmail.com');
+        console.log(`DNS: smtp.gmail.com resuelto a IPv4: ${ipv4}`);
+        host = ipv4;
+      } catch (dnsErr) {
+        console.warn('DNS: Fallo al resolver smtp.gmail.com a IPv4, usando hostname:', dnsErr);
+      }
+
+      // NO usar 'service: gmail' ya que eso ignora host/port y puede forzar IPv6
       const transporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: parseInt(SMTP_PORT || '587'),
-        secure: SMTP_PORT === '465',
+        host: host,
+        port: 465,
+        secure: true, // SSL/TLS
         auth: {
           user: SMTP_USER,
           pass: SMTP_PASS,
         },
+        family: 4, // Fuerza IPv4 a nivel de socket
+        tls: {
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1.2',
+          servername: 'smtp.gmail.com' // Necesario para que el certificado SSL coincida con el dominio
+        },
+        connectionTimeout: 30000,
+        greetingTimeout: 20000,
+        socketTimeout: 30000,
       });
+
+      console.log(`Enviando correo a través de ${host}...`);
 
       // Construir el cuerpo HTML con las imágenes embebidas
       let htmlBody = `<div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; background: #f8fafc; padding: 20px; border-radius: 12px;">
@@ -106,13 +150,13 @@ async function startServer() {
           },
           // Imágenes incrustadas (CID)
           {
-            filename: 'dashboard_capture.png',
-            content: Buffer.from(images.chart.split(',')[1], 'base64'),
+            filename: 'dashboard_capture.jpg',
+            content: Buffer.from(images.chart.includes(',') ? images.chart.split(',')[1] : images.chart, 'base64'),
             cid: 'dashboard_image'
           },
           {
-            filename: 'performance_summary.png',
-            content: Buffer.from(images.consolidated.split(',')[1], 'base64'),
+            filename: 'performance_summary.jpg',
+            content: Buffer.from(images.consolidated.includes(',') ? images.consolidated.split(',')[1] : images.consolidated, 'base64'),
             cid: 'performance_image'
           }
         ],
@@ -127,22 +171,34 @@ async function startServer() {
   });
 
   // Integración con Vite
+  console.log(`Verificando modo de ejecución... NODE_ENV: ${process.env.NODE_ENV}`);
+
   if (process.env.NODE_ENV !== 'production') {
+    console.log('Iniciando en modo Desarrollo con Vite Middleware...');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    const distPath = path.join(__dirname, 'dist');
+    console.log(`Iniciando en modo Producción. Sirviendo archivos desde: ${distPath}`);
+    app.use(express.static(distPath));
+    app.get('*all', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
+    console.log(`=========================================`);
+    console.log(`Servidor activo y escuchando en: http://0.0.0.0:${PORT}`);
+    console.log(`Ambiente: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`=========================================`);
   });
 }
 
-startServer();
+console.log('Cargando servidor...');
+startServer().catch(err => {
+  console.error('ERROR FATAL AL INICIAR EL SERVIDOR:', err);
+  process.exit(1);
+});
