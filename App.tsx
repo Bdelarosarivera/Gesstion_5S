@@ -66,12 +66,17 @@ const App: React.FC = () => {
 
   // Sincronización en tiempo real con Firestore
   useEffect(() => {
+    // Asegurar que exista un token de autorización para las peticiones API (envío de correos)
+    // El valor por defecto es 'admin123'
+    if (!localStorage.getItem('auth_token')) {
+      localStorage.setItem('auth_token', 'admin123');
+    }
+
     const unsubscribeAuth = subscribeToAuth((currentUser) => {
       setUser(currentUser);
-      if (!currentUser) {
-        setIsInitializing(false);
-      }
+      setIsInitializing(false);
     });
+
     return () => unsubscribeAuth();
   }, []);
 
@@ -81,7 +86,7 @@ const App: React.FC = () => {
     setIsSyncing(true);
     
     // Listen to Audits
-    const qAudits = query(collection(db, 'audits'), where('userId', '==', user.uid));
+    const qAudits = query(collection(db, 'audits'));
     const unsubscribeAudits = onSnapshot(qAudits, (snapshot) => {
       const docs = snapshot.docs.map(d => d.data() as AuditRecord);
       setRecords(docs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
@@ -93,7 +98,7 @@ const App: React.FC = () => {
     });
 
     // Listen to Actions
-    const qActions = query(collection(db, 'actions'), where('userId', '==', user.uid));
+    const qActions = query(collection(db, 'actions'));
     const unsubscribeActions = onSnapshot(qActions, (snapshot) => {
       const docs = snapshot.docs.map(d => d.data() as ActionItem);
       setActions(docs.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
@@ -102,13 +107,16 @@ const App: React.FC = () => {
     });
 
     // Listen to Config
-    const configDocRef = doc(db, 'config', user.uid);
+    const configDocRef = doc(db, 'config', 'global_config');
     const unsubscribeConfig = onSnapshot(configDocRef, (snapshot) => {
       if (snapshot.exists()) {
         setConfig(snapshot.data() as AppConfig);
+      } else {
+        // Si no existe la config global, la creamos con los valores por defecto
+        saveConfigToFirebase(DEFAULT_CONFIG);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `config/${user.uid}`);
+      handleFirestoreError(error, OperationType.GET, 'config/global_config');
     });
 
     return () => {
@@ -124,7 +132,14 @@ const App: React.FC = () => {
     try {
       await loginWithGoogle();
     } catch (error: any) {
-      setLoginError('Error al iniciar sesión con Google.');
+      console.error("Login detail:", error);
+      if (error.code === 'auth/unauthorized-domain') {
+        setLoginError('Error: Este dominio no está autorizado en Firebase. Añada su URL de Render a la consola de Firebase.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setLoginError('La ventana de inicio de sesión fue cerrada.');
+      } else {
+        setLoginError(`Error al iniciar sesión: ${error.message || 'Verifique su conexión'}`);
+      }
     } finally {
       setIsLoggingIn(false);
     }
@@ -205,9 +220,9 @@ const App: React.FC = () => {
   const saveConfigToFirebase = async (newConfig: AppConfig) => {
     if (!user) return;
     try {
-      await setDoc(doc(db, 'config', user.uid), { ...newConfig, userId: user.uid });
+      await setDoc(doc(db, 'config', 'global_config'), { ...newConfig, userId: user.uid });
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `config/${user.uid}`);
+      handleFirestoreError(error, OperationType.WRITE, 'config/global_config');
     }
   };
 
@@ -272,7 +287,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
-        <p className="text-blue-500 font-black tracking-widest text-xs uppercase">Iniciando Aplicación...</p>
+        <p className="text-blue-500 font-black tracking-widest text-[10px] uppercase">Verificando Sesión de Google...</p>
       </div>
     );
   }
@@ -301,8 +316,14 @@ const App: React.FC = () => {
                 <p className="text-gray-400 text-sm text-center">Inicie sesión para sincronizar sus auditorías en la nube y acceder desde cualquier dispositivo.</p>
                 
                 {loginError && (
-                  <p className="text-red-400 text-[10px] font-bold text-center uppercase tracking-wider">{loginError}</p>
+                  <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl">
+                    <p className="text-red-400 text-[10px] font-bold text-center uppercase tracking-wider leading-relaxed">{loginError}</p>
+                  </div>
                 )}
+
+                <p className="text-gray-500 text-[9px] text-center uppercase tracking-tight">
+                  Si tiene problemas, use el botón de abrir en nueva pestaña (arriba a la derecha ↗)
+                </p>
 
                 <button 
                   onClick={handleLogin}
@@ -312,12 +333,7 @@ const App: React.FC = () => {
                   {isLoggingIn ? (
                     <Loader2 className="animate-spin w-5 h-5" />
                   ) : (
-                    <svg className="w-5 h-5" viewBox="0 0 24 24">
-                      <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                      <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                      <path fill="currentColor" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z" />
-                      <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                    </svg>
+                    <LogIn className="w-5 h-5" />
                   )}
                   Google Login
                 </button>
