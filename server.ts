@@ -1,17 +1,21 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
-import dns from 'dns';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import helmet from 'helmet';
 
-// SOLUCIÓN DEFINITIVA PARA ENETUNREACH: Forzar IPv4 globalmente en las resoluciones DNS
-if (dns && (dns as any).setDefaultResultOrder) {
-  (dns as any).setDefaultResultOrder('ipv4first');
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// VARIABLES DE ENTORNO — Configurar en el panel de Render:
+//
+//   RESEND_API_KEY  → Tu API Key de resend.com
+//   GMAIL_FROM      → Tu correo Gmail (ej: tucorreo@gmail.com)
+//                     IMPORTANTE: Debes verificarlo en resend.com/settings/emails
+//                     Resend te enviará un link de verificación a ese Gmail.
+//   ADMIN_PASSWORD  → Contraseña para proteger la API del servidor
+//
+// ─────────────────────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = path.join(__dirname, 'data.json');
@@ -28,20 +32,19 @@ async function startServer() {
     await fs.writeFile(DATA_FILE, JSON.stringify({ records: [], actions: [], config: null }));
   }
 
-  // Seguridad: Configurar cabeceras de seguridad (Optimizado para Firebase Auth)
+  // Seguridad: cabeceras HTTP (optimizado para Firebase Auth)
   app.use(helmet({
-    contentSecurityPolicy: false, // Permitir assets de Vite
-    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }, // PERMITIR POPUPS DE AUTH
+    contentSecurityPolicy: false,
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
   }));
 
-  // Aumentar el límite para recibir imágenes base64 grandes
+  // Límite ampliado para imágenes base64 grandes
   app.use(express.json({ limit: '50mb' }));
 
-  // Middleware sencillo para verificar la sesión (simulado con un token simple por ahora)
+  // Middleware de autenticación
   const verifyAuth = (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
     const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'admin123';
-    
     if (authHeader === `Bearer ${ADMIN_PASS}`) {
       next();
     } else {
@@ -49,216 +52,152 @@ async function startServer() {
     }
   };
 
-  // API para cargar todos los datos sincronizados (DEPRECATED - Moved to Firestore)
-  // app.get('/api/data', verifyAuth, ...)
-  // app.post('/api/data', verifyAuth, ...)
-  // app.post('/api/login', ...)
-
-  // API para enviar el reporte (PROTEGIDA)
+  // ─────────────────────────────────────────────────────────────────────────
+  // POST /api/send-report
+  // Envía el reporte por correo usando Resend API (HTTP puro, sin SMTP).
+  // Funciona en Render porque no usa los puertos 465 ni 587.
+  // ─────────────────────────────────────────────────────────────────────────
   app.post('/api/send-report', verifyAuth, async (req, res) => {
     console.log('Solicitud de envío de reporte recibida');
-    const { to, subject, message, attachments, images } = req.body;
-    
-    // --- NUEVA LÓGICA HIBRIDAS ---
-    const { RESEND_API_KEY, SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT } = process.env;
 
-    // Prioridad 1: RESEND API (Solución definitiva para Render)
-    if (RESEND_API_KEY) {
-      console.log('--- INTENTO DE ENVÍO VÍA RESEND API (Prioridad 1) ---');
-      const resend = new Resend(RESEND_API_KEY);
-      
-      try {
-        const { data, error } = await resend.emails.send({
-          from: 'AuditCheck Pro <onboarding@resend.dev>', 
-          to: [to],
-          subject: subject,
-          html: generateHtmlBody(message),
-          attachments: [
-            // El Excel se queda como adjunto normal
-            {
-              filename: attachments[0].filename,
-              content: Buffer.from(attachments[0].content, 'base64'),
-            },
-            // Las imágenes se configuran con contentId para que el HTML pueda "verlas"
-            {
-              filename: 'dashboard_capture.jpg',
-              content: Buffer.from(images.chart.includes(',') ? images.chart.split(',')[1] : images.chart, 'base64'),
-              content_id: 'dashboard_image'
-            },
-            {
-              filename: 'performance_summary.jpg',
-              content: Buffer.from(images.consolidated.includes(',') ? images.consolidated.split(',')[1] : images.consolidated, 'base64'),
-              content_id: 'performance_image'
-            }
-          ]
-        });
+    const { to, subject, message, attachments, images, auditorName } = req.body;
+    const { RESEND_API_KEY, GMAIL_FROM } = process.env;
 
-        if (error) {
-          console.error('Error reportado por Resend API:', error);
-          throw error;
-        }
-
-        console.log('Correo enviado exitosamente vía Resend API:', data);
-        return res.json({ 
-          success: true, 
-          via: 'resend', 
-          message: 'Reporte enviado con éxito vía Resend (Sin contraseñas SMTP)' 
-        });
-      } catch (resendError: any) {
-        console.error('Fallo Resend API:', resendError);
-        // Si falla Resend, solo continuamos a SMTP si el usuario explícitamente tiene credenciales
-      }
-    }
-
-    // Prioridad 2: SMTP MANUAL (Fallback o si no hay Resend)
-    if (!SMTP_USER || !SMTP_PASS) {
-      console.error('Configuración de correo incompleta (No hay RESEND_API_KEY ni credenciales SMTP)');
-      return res.status(500).json({ 
+    // Validar variable de entorno principal
+    if (!RESEND_API_KEY) {
+      console.error('Falta RESEND_API_KEY');
+      return res.status(500).json({
         error: 'Configuración incompleta',
-        details: 'Configure RESEND_API_KEY en Render para una solución 100% fiable, o proporcione credenciales SMTP válidas.' 
+        details: 'Falta la variable RESEND_API_KEY. Agréguela en Environment Variables de Render.'
       });
     }
+
+    // Remitente: usar GMAIL_FROM si existe (debe estar verificado) o onboarding@resend.dev por defecto
+    const sender = GMAIL_FROM || 'onboarding@resend.dev';
+
+    console.log(`--- ENVIANDO VÍA RESEND API ---`);
+    console.log(`Remitente: ${sender} (Reply-to: ${GMAIL_FROM || sender})  →  Para: ${to}`);
+
+    const resend = new Resend(RESEND_API_KEY);
 
     try {
-      const targetHost = SMTP_HOST || 'smtp.gmail.com';
-      const targetPort = parseInt(SMTP_PORT || '587');
-      const isGmail = targetHost.includes('gmail.com');
-
-      console.log(`--- INTENTO DE ENVÍO SMTP (HOST: ${targetHost}, PORT: ${targetPort}) ---`);
-      
-      let transporterConfig: any = {
-        host: targetHost,
-        port: targetPort,
-        secure: targetPort === 465,
-        auth: {
-          user: SMTP_USER,
-          pass: SMTP_PASS,
-        },
-        tls: {
-          rejectUnauthorized: false,
-          minVersion: 'TLSv1.2'
-        },
-        connectionTimeout: 20000,
-        greetingTimeout: 20000,
-        socketTimeout: 60000,
-      };
-
-      // Si es Gmail, usar configuración manual optimizada para Render
-      if (isGmail) {
-        console.log('Usando configuración manual optimizada para Gmail');
-        
-        transporterConfig = {
-          host: 'smtp.gmail.com',
-          port: 587,
-          secure: false, // TLS/STARTTLS usa puerto 587 con secure: false
-          family: 4, // Forzar IPv4 al nivel de conexión
-          auth: {
-            user: SMTP_USER,
-            pass: SMTP_PASS,
-          },
-          tls: {
-            rejectUnauthorized: false,
-            minVersion: 'TLSv1.2'
-          },
-          debug: true, // Mostrar logs de protocolo SMTP
-          logger: true, // Habilitar logger interno
-          connectionTimeout: 60000,
-          greetingTimeout: 60000,
-          socketTimeout: 60000,
-          dnsTimeout: 30000
-        };
-      }
-
-      console.log("SMTP_HOST:", transporterConfig.host);
-      console.log("SMTP_PORT:", transporterConfig.port);
-      console.log("SMTP_SECURE:", transporterConfig.secure);
-
-      const transporter = nodemailer.createTransport(transporterConfig);
-
-      console.log(`Iniciando conexión SMTP...`);
-
-      const transporterVerify = await new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          resolve({ success: false, error: { message: 'Timeout en verificación (60s) - El servidor SMTP no responde a tiempo en Render.' } });
-        }, 60000);
-
-        transporter.verify((error, success) => {
-          clearTimeout(timeout);
-          if (error) {
-            console.error('Error de verificación SMTP:', error);
-            resolve({ success: false, error });
-          } else {
-            console.log('Servidor SMTP listo para enviar');
-            resolve({ success: true });
-          }
-        });
-      });
-
-      if (!(transporterVerify as any).success) {
-        throw new Error(`Fallo en la verificación SMTP: ${(transporterVerify as any).error.message}`);
-      }
-
-      const mailOptions = {
-        from: SMTP_USER,
-        to,
-        subject,
-        html: generateHtmlBody(message),
+      const { data, error } = await resend.emails.send({
+        from: `AuditCheck Pro <${sender}>`,
+        to: [to],
+        reply_to: sender,
+        subject: subject,
+        html: generateHtmlBody(message, 'dashboard_image', 'performance_image', auditorName),
         attachments: [
-          // Excel adjunto
+          // Archivo Excel adjunto
           {
             filename: attachments[0].filename,
             content: Buffer.from(attachments[0].content, 'base64'),
           },
-          // Imágenes incrustadas (CID)
+          // Imagen del Dashboard incrustada en el HTML
           {
-            filename: 'dashboard_capture.jpg',
-            content: Buffer.from(images.chart.includes(',') ? images.chart.split(',')[1] : images.chart, 'base64'),
-            cid: 'dashboard_image'
+            filename: 'dashboard.jpg',
+            content: Buffer.from(images.chart.split(',')[1] || images.chart, 'base64'),
+            content_id: 'dashboard_image',
+            disposition: 'inline'
           },
+          // Imagen de Desempeño incrustada en el HTML
           {
-            filename: 'performance_summary.jpg',
-            content: Buffer.from(images.consolidated.includes(',') ? images.consolidated.split(',')[1] : images.consolidated, 'base64'),
-            cid: 'performance_image'
+            filename: 'performance.jpg',
+            content: Buffer.from(images.consolidated.split(',')[1] || images.consolidated, 'base64'),
+            content_id: 'performance_image',
+            disposition: 'inline'
           }
-        ],
-      };
+        ]
+      });
 
-      await transporter.sendMail(mailOptions);
-      res.json({ success: true, via: 'smtp', message: 'Correo enviado correctamente vía SMTP' });
-    } catch (error: any) {
-      console.error('Error al enviar correo:', error);
-      res.status(500).json({ error: 'Error al enviar el correo', details: error.message });
+      if (error) {
+        console.error('Error de Resend API:', error);
+        const errorMsg  = (error as any).message || 'Error desconocido';
+        const errorName = (error as any).name    || '';
+
+        // Error de sandbox o remitente no verificado
+        const isSandboxError = 
+          errorMsg.toLowerCase().includes('unverified') || 
+          errorMsg.toLowerCase().includes('sender') ||
+          errorName === 'forbidden';
+
+        if (isSandboxError) {
+          return res.status(403).json({
+            error: 'Remitente no verificado',
+            details: `Resend no permite enviar desde "${sender}" porque no está verificado. 
+            
+            SOLUCIÓN RÁPIDA:
+            1. Verifique su Gmail aquí: https://resend.com/emails (Sección "Single Sender").
+            2. NO use la sección "Domains" para su Gmail, use "Emails".
+            3. Una vez verificado, asegúrese de que el nombre de la variable en Render sea GMAIL_FROM y tenga el valor exacto del correo verificado.`
+          });
+        }
+
+        return res.status(500).json({
+          error: 'Error al enviar el correo',
+          details: errorMsg
+        });
+      }
+
+      console.log('✅ Correo enviado exitosamente:', data);
+      return res.json({
+        success: true,
+        via: 'resend',
+        message: `Reporte enviado con éxito desde ${sender}`
+      });
+
+    } catch (err: any) {
+      console.error('Excepción inesperada:', err);
+      return res.status(500).json({
+        error: 'Error inesperado',
+        details: err.message || 'Error desconocido.'
+      });
     }
   });
 
-  // Función auxiliar para generar el HTML
-  function generateHtmlBody(message: string) {
-    return `<div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; background: #f8fafc; padding: 20px; border-radius: 12px;">
+  // ─────────────────────────────────────────────────────────────────────────
+  // Genera el cuerpo HTML del correo con imágenes incrustadas (Content-ID)
+  // ─────────────────────────────────────────────────────────────────────────
+  function generateHtmlBody(
+    message: string,
+    chartCid: string,
+    consolidatedCid: string,
+    auditorName?: string
+  ) {
+    const signature = auditorName
+      ? `Auditoría realizada por ${auditorName}`
+      : 'Hecho por Bartolo de la Rosa';
+
+    return `
+      <div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; background: #f8fafc; padding: 20px; border-radius: 12px;">
         <h2 style="color: #1e293b; border-bottom: 2px solid #3b82f6; padding-bottom: 10px;">Reporte de Auditoría 5S</h2>
         <p style="font-size: 16px; line-height: 1.5;">${message.replace(/\n/g, '<br>')}</p>
-        
+
         <div style="margin-top: 30px;">
           <h3 style="color: #1e293b; font-size: 18px; margin-bottom: 15px;">Captura del Dashboard General</h3>
           <div style="background: #0f172a; padding: 15px; border-radius: 12px; border: 1px solid #334155;">
-            <img src="cid:dashboard_image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+            <img src="cid:${chartCid}" style="max-width: 100%; height: auto; border-radius: 8px;" />
           </div>
         </div>
 
         <div style="margin-top: 40px;">
           <h3 style="color: #1e293b; font-size: 18px; margin-bottom: 15px;">Resumen de Desempeño por Áreas (Top 5)</h3>
           <div style="background: #0f172a; padding: 15px; border-radius: 12px; border: 1px solid #334155;">
-            <img src="cid:performance_image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+            <img src="cid:${consolidatedCid}" style="max-width: 100%; height: auto; border-radius: 8px;" />
           </div>
         </div>
 
         <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px; font-size: 12px; color: #64748b; text-align: center;">
           <p>Este es un correo automático generado por <strong>AuditCheck Pro AI Engine</strong>.</p>
           <p>Los archivos detallados se encuentran adjuntos en formato Excel.</p>
+          <p style="margin-top: 10px; font-weight: bold; color: #1e293b;">${signature}</p>
         </div>
       </div>`;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
   // Integración con Vite
+  // ─────────────────────────────────────────────────────────────────────────
   console.log(`Verificando modo de ejecución... NODE_ENV: ${process.env.NODE_ENV}`);
 
   if (process.env.NODE_ENV !== 'production') {
@@ -278,10 +217,10 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`=========================================`);
-    console.log(`Servidor activo y escuchando en: http://0.0.0.0:${PORT}`);
+    console.log('=========================================');
+    console.log(`Servidor activo en: http://0.0.0.0:${PORT}`);
     console.log(`Ambiente: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`=========================================`);
+    console.log('=========================================');
   });
 }
 
